@@ -1,161 +1,165 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-const { Client, LocalAuth } = require('whatsapp-web.js')
-const qrcode = require('qrcode-terminal')
-const axios = require('axios')
-const cheerio = require('cheerio')
-const cron = require('node-cron')
-const moment = require('moment')
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const qrcode = require('qrcode-terminal');
+const axios = require('axios');
+const cheerio = require('cheerio');
+const cron = require('node-cron');
+const moment = require('moment');
+
+const TARGET = "6282129048885@c.us";
 
 const client = new Client({
-authStrategy: new LocalAuth()
-})
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+        ]
+    }
+});
 
-const TARGET = "6282129048885@c.us"
-
-let sentReminders = new Set()
+let sentReminders = new Set();
 
 client.on('qr', (qr) => {
-console.log('Scan QR di WhatsApp')
-qrcode.generate(qr,{small:true})
-})
+    console.log("Scan QR ini di WhatsApp");
+    qrcode.generate(qr, { small: true });
+});
 
 client.on('ready', () => {
 
-console.log("WhatsApp Connected ✅")
+    console.log("WhatsApp Connected ✅");
+    console.log("Bot Forex aktif 🚀");
 
-startBot()
+    startBot();
 
-})
+});
 
-client.initialize()
-
+client.initialize();
 
 async function getForexNews(){
 
-const res = await axios.get("https://www.forexfactory.com/calendar")
+    const res = await axios.get("https://www.forexfactory.com/calendar");
 
-const $ = cheerio.load(res.data)
+    const $ = cheerio.load(res.data);
 
-const news = []
+    const news = [];
 
-$(".calendar__row").each((i,el)=>{
+    $(".calendar__row").each((i,el)=>{
 
-const currency = $(el).find(".calendar__currency").text().trim()
-const impact = $(el).find(".impact").attr("title") || ""
-const title = $(el).find(".calendar__event-title").text().trim()
-const time = $(el).find(".calendar__time").text().trim()
+        const currency = $(el).find(".calendar__currency").text().trim();
+        const impact = $(el).find(".impact").attr("title") || "";
+        const title = $(el).find(".calendar__event-title").text().trim();
+        const time = $(el).find(".calendar__time").text().trim();
 
-const actual = $(el).find(".calendar__actual").text().trim()
-const forecast = $(el).find(".calendar__forecast").text().trim()
-const previous = $(el).find(".calendar__previous").text().trim()
+        const actual = $(el).find(".calendar__actual").text().trim();
+        const forecast = $(el).find(".calendar__forecast").text().trim();
+        const previous = $(el).find(".calendar__previous").text().trim();
 
-if(currency === "USD" && impact.includes("High")){
+        if(currency === "USD" && impact.includes("High")){
 
-news.push({
-title,
-time,
-actual,
-forecast,
-previous
-})
+            news.push({
+                title,
+                time,
+                actual,
+                forecast,
+                previous
+            });
+
+        }
+
+    });
+
+    return news;
 
 }
-
-})
-
-return news
-
-}
-
-
 
 function buildMessage(news){
 
-let msg = "📊 *USD HIGH IMPACT NEWS*\n\n"
+    let msg = "📊 *USD HIGH IMPACT NEWS*\n\n";
 
-news.forEach((n,i)=>{
+    news.forEach((n,i)=>{
 
-msg += `${i+1}. ${n.title}\n`
-msg += `⏰ ${n.time}\n`
-msg += `📌 Previous: ${n.previous || "-"}\n`
-msg += `📈 Forecast: ${n.forecast || "-"}\n`
-msg += `📊 Actual: ${n.actual || "-"}\n\n`
+        msg += `${i+1}. ${n.title}\n`;
+        msg += `⏰ ${n.time}\n`;
+        msg += `📌 Previous: ${n.previous || "-"}\n`;
+        msg += `📈 Forecast: ${n.forecast || "-"}\n`;
+        msg += `📊 Actual: ${n.actual || "-"}\n\n`;
 
-})
+    });
 
-return msg
+    return msg;
 
 }
-
-
 
 function buildReminder(n){
 
-let msg = "⚠️ *REMINDER NEWS 1 JAM*\n\n"
+    let msg = "⚠️ *REMINDER NEWS 1 JAM*\n\n";
 
-msg += `📰 ${n.title}\n`
-msg += `⏰ ${n.time}\n`
-msg += `📌 Previous: ${n.previous}\n`
-msg += `📈 Forecast: ${n.forecast}\n`
+    msg += `📰 ${n.title}\n`;
+    msg += `⏰ ${n.time}\n`;
+    msg += `📌 Previous: ${n.previous}\n`;
+    msg += `📈 Forecast: ${n.forecast}\n`;
 
-return msg
+    return msg;
 
 }
-
-
 
 function startBot(){
 
-console.log("Bot Forex aktif 🚀")
+    console.log("Scheduler aktif");
 
-// kirim summary jam 07:00
-cron.schedule('0 7 * * *', async ()=>{
+    // kirim summary jam 07:00
+    cron.schedule('0 7 * * *', async ()=>{
 
-const news = await getForexNews()
+        const news = await getForexNews();
+        const message = buildMessage(news);
 
-const message = buildMessage(news)
+        await client.sendMessage(TARGET,message);
 
-await client.sendMessage(TARGET,message)
+        console.log("Morning news sent");
 
-console.log("Morning news sent")
+    },{
+        timezone:"Asia/Jakarta"
+    });
 
-},{
-timezone:"Asia/Jakarta"
-})
+    // cek setiap 5 menit
+    cron.schedule('*/5 * * * *', async ()=>{
 
+        const news = await getForexNews();
+        const now = moment();
 
-// cek setiap 5 menit
-cron.schedule('*/5 * * * *', async ()=>{
+        news.forEach(async n => {
 
-const news = await getForexNews()
+            if(!n.time.includes(":")) return;
 
-const now = moment()
+            const eventTime = moment(n.time,"HH:mm");
 
-news.forEach(async n => {
+            const diff = eventTime.diff(now,'minutes');
 
-if(!n.time.includes(":")) return
+            const key = n.title + n.time;
 
-const eventTime = moment(n.time,"HH:mm")
+            if(diff <= 60 && diff >= 55 && !sentReminders.has(key)){
 
-const diff = eventTime.diff(now,'minutes')
+                const msg = buildReminder(n);
 
-const key = n.title + n.time
+                await client.sendMessage(TARGET,msg);
 
-if(diff <= 60 && diff >= 55 && !sentReminders.has(key)){
+                sentReminders.add(key);
 
-const msg = buildReminder(n)
+                console.log("Reminder sent:",n.title);
 
-await client.sendMessage(TARGET,msg)
+            }
 
-sentReminders.add(key)
+        });
 
-console.log("Reminder sent:",n.title)
-
-}
-
-})
-
-})
+    });
 
 }
